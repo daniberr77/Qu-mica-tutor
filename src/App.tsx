@@ -6,13 +6,15 @@ import { PeriodicTableWidget } from './components/PeriodicTableWidget';
 import { MolarMassCalc } from './components/Calculators/MolarMassCalc';
 import { GasLawCalc } from './components/Calculators/GasLawCalc';
 import { PhCalc } from './components/Calculators/PhCalc';
-import type { ChatExportFormat } from './types';
+import { ChallengeZone } from './components/ChallengeZone';
+import { BalancingAndCalcHub } from './components/BalancingAndCalc/BalancingAndCalcHub';
 import {
   MessageSquare,
   History,
   Calculator,
   Atom,
   Flame,
+  Scale,
   Download,
   Trash2,
   Plus,
@@ -20,11 +22,10 @@ import {
   Edit2,
   Check,
   Search,
-  BookOpen,
 } from 'lucide-react';
 
 const DashboardContent: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'chat' | 'history' | 'calculators' | 'table'>('chat');
+  const [activeTab, setActiveTab] = useState<'chat' | 'challenges' | 'history' | 'balancing' | 'calculators' | 'table'>('chat');
   const [calcSubTab, setCalcSubTab] = useState<'molar' | 'gas' | 'ph'>('molar');
   const [historySearch, setHistorySearch] = useState('');
   const [editingTitleId, setEditingTitleId] = useState<string | null>(null);
@@ -94,6 +95,45 @@ const DashboardContent: React.FC = () => {
             </button>
 
             <button
+              onClick={() => setActiveTab('balancing')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
+                activeTab === 'balancing'
+                  ? 'bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <Scale className="w-4 h-4" />
+              <span>Balanceo y Cálculo</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('challenges')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
+                activeTab === 'challenges'
+                  ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <Flame
+                className={`w-4 h-4 ${
+                  activeTab === 'challenges'
+                    ? 'text-white fill-white'
+                    : 'text-orange-500 fill-orange-500'
+                }`}
+              />
+              <span>Zona de Retos</span>
+              <span
+                className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                  activeTab === 'challenges'
+                    ? 'bg-white/20 text-white'
+                    : 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300'
+                }`}
+              >
+                Retos
+              </span>
+            </button>
+
+            <button
               onClick={() => setActiveTab('history')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
                 activeTab === 'history'
@@ -144,6 +184,15 @@ const DashboardContent: React.FC = () => {
           <div className="flex-1 h-[calc(100vh-130px)]">
             <ChatInterface />
           </div>
+        )}
+
+        {activeTab === 'challenges' && (
+          <ChallengeZone
+            onAskTutor={(question) => {
+              setActiveTab('chat');
+              sendMessage(question);
+            }}
+          />
         )}
 
         {activeTab === 'history' && (
@@ -349,10 +398,16 @@ const DashboardContent: React.FC = () => {
           </div>
         )}
 
+        {activeTab === 'balancing' && (
+          <div className="flex-1 max-w-7xl mx-auto w-full p-4 sm:p-6 space-y-6">
+            <BalancingAndCalcHub />
+          </div>
+        )}
+
         {activeTab === 'calculators' && (
           <div className="flex-1 max-w-5xl mx-auto w-full p-4 sm:p-6 space-y-6">
             {/* Sub navigation for calculators */}
-            <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-3">
+            <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-3 flex-wrap">
               <button
                 onClick={() => setCalcSubTab('molar')}
                 className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all ${
@@ -382,6 +437,13 @@ const DashboardContent: React.FC = () => {
                 }`}
               >
                 Escala y Cálculo de pH / pOH
+              </button>
+              <button
+                onClick={() => setActiveTab('balancing')}
+                className="px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 flex items-center gap-1.5 transition-all ml-auto"
+              >
+                <Scale className="w-4 h-4" />
+                <span>Ir a Balanceo & Estequiometría →</span>
               </button>
             </div>
 

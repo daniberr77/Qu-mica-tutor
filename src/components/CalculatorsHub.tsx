@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { MolarMassCalc } from './Calculators/MolarMassCalc';
 import { GasLawCalc } from './Calculators/GasLawCalc';
 import { PhCalc } from './Calculators/PhCalc';
-import { EquationBalancer } from './Calculators/EquationBalancer';
+import { BalancingAndCalcHub } from './BalancingAndCalc/BalancingAndCalcHub';
 import { Calculator, Wind, Droplet, Scale } from 'lucide-react';
 
 export const CalculatorsHub: React.FC = () => {
@@ -65,7 +65,7 @@ export const CalculatorsHub: React.FC = () => {
       {activeTool === 'mol' && <MolarMassCalc />}
       {activeTool === 'gas' && <GasLawCalc />}
       {activeTool === 'ph' && <PhCalc />}
-      {activeTool === 'balance' && <EquationBalancer />}
+      {activeTool === 'balance' && <BalancingAndCalcHub />}
     </div>
   );
 };

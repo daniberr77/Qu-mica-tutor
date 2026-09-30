@@ -1,5 +1,7 @@
 import { GoogleGenAI } from '@google/genai';
 import { buildStudyMaterialPromptContext } from './studyMaterial';
+import type { Challenge, ChallengeCategory, ChallengeDifficulty } from '../types/challenges';
+import { generateDynamicChallenge } from '../data/challengesData';
 
 /**
  * Tipos de mensajes compatibles con el historial de chat del tutor socrático.
@@ -142,6 +144,20 @@ FLECHA DE RENDIMIENTO: Usa un guion y un signo mayor que (->) para representar l
 
 EJEMPLO DE SALIDA OBLIGATORIA (Combustión del metanol):
 2 CH3OH (l) + 3 O2 (g) -> 2 CO2 (g) + 4 H2O (l)
+
+### PROTOCOLO SOCRÁTICO OBLIGATORIO PARA LA "ZONA DE RETOS":
+Cuando el estudiante ingrese con un problema de la "Zona de Retos" o indique que se equivocó en un reto de balanceo, estequiometría o gases:
+1. TIENES ESTRICTAMENTE PROHIBIDO DAR LA RESPUESTA O EL RESULTADO FINAL.
+   - NUNCA digas: "La respuesta correcta es X", "Los coeficientes son...", ni reveles el número o letra final.
+   - Tu deber pedagógico es guiarlo para que él mismo lo resuelva.
+2. INICIA DE INMEDIATO UNA SESIÓN SOCRÁTICA BASADA EN EL MATERIAL DE ESTUDIO:
+   - Valida amablemente su esfuerzo y motívalo (ej: "¡Buen intento! Equivocarse es el primer paso para dominar la química. Vamos a razonarlo juntos paso a paso.").
+   - Hazle UNA SOLA pregunta orientadora a la vez, apoyándote exclusivamente en las reglas y ejemplos del libro de material_estudio:
+     * Si es balanceo por tanteo: pregúntale qué átomos diferentes de H y O debe revisar primero según el paso 1 del método de UAEH.
+     * Si es balanceo redox: pregúntale por los estados de oxidación iniciales de los reactivos o cuál elemento se oxida y cuál se reduce.
+     * Si es estequiometría: pregúntale cómo convertir la masa inicial a moles o cuál es la relación molar en la ecuación balanceada.
+     * Si es gases: pregúntale qué variables conoce de PV = nRT y si la temperatura ya fue convertida a Kelvin.
+   - Espera la respuesta del estudiante antes de formular la siguiente pista. Guíalo con paciencia hasta que deduzca la solución correcta.
 
 ### FORMATO DE SALIDA REQUERIDO:
 Responde en Markdown claro y visual. Al final de tu respuesta, añade SIEMPRE una sección de sugerencias con 2 o 3 opciones breves de respuestas o caminos que el estudiante puede tomar, con el siguiente formato exacto:
@@ -306,3 +322,116 @@ export async function sendSocraticTutorPrompt(
     };
   }
 }
+
+/**
+ * Genera un reto o problema dinámico de química mediante la API de Gemini,
+ * basándose exclusivamente en el libro y material de estudio cargado en /material_estudio
+ * (balanceo de ecuaciones por tanteo o redox, relaciones estequiométricas y gases ideales).
+ */
+export async function generateChallengeWithGemini(
+  categoryFilter?: ChallengeCategory | 'all',
+  difficultyFilter?: ChallengeDifficulty | 'all'
+): Promise<Challenge> {
+  const chosenCat: ChallengeCategory =
+    categoryFilter && categoryFilter !== 'all'
+      ? categoryFilter
+      : (['balanceo', 'estequiometria', 'gases'][Math.floor(Math.random() * 3)] as ChallengeCategory);
+
+  const chosenDiff: ChallengeDifficulty =
+    difficultyFilter && difficultyFilter !== 'all' ? difficultyFilter : 'medio';
+
+  // Si Gemini no está configurado, recurrir al generador procedural local como fallback
+  if (!isGeminiConfigured()) {
+    return generateDynamicChallenge(chosenCat, chosenDiff);
+  }
+
+  try {
+    const ai = getGeminiClient();
+    let selectedModel = import.meta.env.VITE_GEMINI_MODEL || 'models/gemini-3.8-flash';
+    if (selectedModel === 'gemini-2.5-flash' || selectedModel === 'models/gemini-2.5-flash') {
+      selectedModel = 'models/gemini-3.8-flash';
+    }
+
+    const systemInstruction = `Eres un generador especializado de problemas y retos interactivos de química para la "Zona de Retos".
+Debes basarte EXCLUSIVAMENTE en el contenido, reacciones, metodologías y ejemplos del libro y material de estudio oficial cargado en la carpeta "material_estudio" (métodos de balanceo por tanteo, redox y algebraico de UAEH, estequiometría de masas y moles, y leyes de gases ideales PV = nRT).
+
+${buildStudyMaterialPromptContext()}
+
+REGLAS DE FORMATO ESTRICTAS:
+- CERO FORMATO MATEMÁTICO: Tienes estrictamente prohibido usar símbolos como el signo de dólar ($), guiones bajos (_) o corchetes ([]).
+- Todo debe ir en texto plano limpio (ejemplo: 2 Al + 3 S -> Al2S3, o P1 * V1 = P2 * V2).
+- Debes responder ÚNICAMENTE con un objeto JSON válido, sin delimitadores de código markdown ni texto adicional.`;
+
+    const prompt = `Inventa un reto o problema interactivo de química con las siguientes especificaciones:
+- Categoría: "${chosenCat}" (debe ser balanceo, estequiometria o gases)
+- Dificultad: "${chosenDiff}"
+- Tipo de reto sugerido: ${chosenCat === 'balanceo' ? '"coefficients" (balanceo de ecuación química con reactivos y productos)' : '"numeric" (cálculo de número decimal)'}
+
+ESTRUCTURA JSON REQUERIDA:
+Si es de tipo "coefficients" (balanceo de ecuación química):
+{
+  "type": "coefficients",
+  "category": "balanceo",
+  "difficulty": "${chosenDiff}",
+  "title": "Título corto del reto de balanceo",
+  "question": "Enunciado del problema de balanceo",
+  "chemicalEquation": "Ecuación sin balancear en texto plano (ej: Al + S -> Al2S3 o Hg + O2 -> HgO)",
+  "reactants": [{"formula": "Al", "name": "Aluminio"}, {"formula": "S", "name": "Azufre"}],
+  "products": [{"formula": "Al2S3", "name": "Sulfuro de aluminio"}],
+  "correctCoefficients": {
+    "reactants": [2, 3],
+    "products": [1]
+  },
+  "hint": "Pista basada en los pasos de UAEH sin dar la respuesta directa",
+  "explanation": "Explicación detallada del balanceo paso a paso",
+  "points": ${chosenDiff === 'facil' ? 20 : chosenDiff === 'medio' ? 30 : 45}
+}
+
+Si es de tipo "numeric" (para estequiometría o gases):
+{
+  "type": "numeric",
+  "category": "${chosenCat}",
+  "difficulty": "${chosenDiff}",
+  "title": "Título del reto",
+  "question": "Enunciado del problema con datos concretos",
+  "chemicalEquation": "Ecuación o ley química en texto plano (ej: P1 * V1 = P2 * V2 o 2 H2 + O2 -> 2 H2O)",
+  "targetValue": 25.4,
+  "tolerance": 0.2,
+  "unit": "g, mol, L, o atm",
+  "placeholder": "Ej. 25.4",
+  "hint": "Pista orientadora basada en las fórmulas del material de estudio",
+  "explanation": "Resolución matemática y química paso a paso",
+  "formula": "Fórmula empleada en texto plano",
+  "points": ${chosenDiff === 'facil' ? 20 : chosenDiff === 'medio' ? 30 : 45}
+}
+
+IMPORTANTE: Responde ÚNICAMENTE con el objeto JSON puro sin envolver en bloques de código markdown.`;
+
+    const response = await ai.models.generateContent({
+      model: selectedModel,
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      config: {
+        systemInstruction,
+        temperature: 0.7,
+        responseMimeType: 'application/json',
+      },
+    });
+
+    const rawJson = response.text?.trim() || '';
+    const cleanJson = rawJson.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
+    const parsed = JSON.parse(cleanJson);
+
+    if (parsed.title && parsed.question && parsed.type) {
+      return {
+        ...parsed,
+        id: `gemini-reto-${chosenCat}-${Date.now()}`,
+      } as Challenge;
+    }
+
+    return generateDynamicChallenge(chosenCat, chosenDiff);
+  } catch (error) {
+    console.warn('Error al generar reto con Gemini API, usando generador local de respaldo:', error);
+    return generateDynamicChallenge(chosenCat, chosenDiff);
+  }
+}
+
