@@ -196,8 +196,12 @@ export async function sendSocraticTutorPrompt(
 
   try {
     const ai = getGeminiClient();
-    const selectedModel =
-      modelName || import.meta.env.VITE_GEMINI_MODEL || 'gemini-2.5-flash';
+    let selectedModel =
+      modelName || import.meta.env.VITE_GEMINI_MODEL || 'models/gemini-3.8-flash';
+
+    if (selectedModel === 'gemini-2.5-flash' || selectedModel === 'models/gemini-2.5-flash') {
+      selectedModel = 'models/gemini-3.8-flash';
+    }
 
     // Construir la instrucción del sistema socrático
     const systemInstruction = buildSocraticSystemInstruction(mode, topicContext);
