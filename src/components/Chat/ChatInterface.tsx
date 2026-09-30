@@ -3,6 +3,7 @@ import { useChatHistory, useStudent } from '../../context';
 import { ConversationHistoryDrawer } from './ConversationHistoryDrawer';
 import { TUTOR_MODES } from '../../data/tutorKnowledge';
 import type { TutorModeType } from '../../types';
+import { PremiumModal } from '../PremiumModal';
 import {
   Send,
   Sparkles,
@@ -532,6 +533,12 @@ export const ChatInterface: React.FC = () => {
       <ConversationHistoryDrawer
         isOpen={isHistoryOpen}
         onClose={() => setIsHistoryOpen(false)}
+      />
+
+      {/* Premium Upgrade Modal */}
+      <PremiumModal
+        isOpen={isPremiumModalOpen}
+        onClose={() => setIsPremiumModalOpen(false)}
       />
     </div>
   );

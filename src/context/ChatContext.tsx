@@ -203,11 +203,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       // Deducir 1 crédito por mensaje enviado al tutor Gemini
-      const creditDeducted = await deductCredit();
-      if (!creditDeducted) {
-        setIsPremiumModalOpen(true);
-        return;
-      }
+      deductCredit();
 
       lastSendTimestampRef.current = now;
 

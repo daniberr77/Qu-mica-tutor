@@ -15,8 +15,9 @@ import {
 } from '../services/firebase';
 
 export type DatabaseStatus = 'firestore' | 'local_fallback' | 'connecting';
+export type Profile = StudentProfile;
 
-interface StudentContextType {
+export interface StudentContextType {
   profile: StudentProfile;
   dbStatus: DatabaseStatus;
   isPremiumModalOpen: boolean;
@@ -36,7 +37,7 @@ interface StudentContextType {
   saveNote: (subtopicId: string, note: string) => void;
   resetProgress: () => void;
   // Métodos de créditos y versión Premium
-  deductCredit: () => Promise<boolean>;
+  deductCredit: () => void;
   restoreDailyCredits: (amount?: number) => void;
   upgradeToPremium: (planType?: 'subscription' | 'one_time') => void;
   cancelPremium: () => void;
@@ -294,37 +295,35 @@ export const StudentProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, []);
 
   /**
-   * Deducts 1 credit when a student sends a message to Gemini.
-   * If credits reach 0, opens the Premium modal and returns false if no credits were left.
+   * Resta 1 a los créditos actuales del estudiante si no es Premium.
+   * Si los créditos llegan a 0, abre el modal de Premium para invitar a mejorar el plan.
    */
-  const deductCredit = useCallback(async (): Promise<boolean> => {
-    if (profile.isPremium) {
-      setProfile((prev) => ({
+  const deductCredit = useCallback((): void => {
+    setProfile((prev) => {
+      if (prev.isPremium) {
+        return {
+          ...prev,
+          totalMessagesSent: (prev.totalMessagesSent || 0) + 1,
+        };
+      }
+
+      if (prev.credits <= 0) {
+        setIsPremiumModalOpen(true);
+        return prev;
+      }
+
+      const nextCredits = Math.max(0, prev.credits - 1);
+      if (nextCredits === 0) {
+        setIsPremiumModalOpen(true);
+      }
+
+      return {
         ...prev,
+        credits: nextCredits,
         totalMessagesSent: (prev.totalMessagesSent || 0) + 1,
-      }));
-      return true;
-    }
-
-    if (profile.credits <= 0) {
-      setIsPremiumModalOpen(true);
-      return false;
-    }
-
-    const nextCredits = Math.max(0, profile.credits - 1);
-    setProfile((prev) => ({
-      ...prev,
-      credits: nextCredits,
-      totalMessagesSent: (prev.totalMessagesSent || 0) + 1,
-    }));
-
-    if (nextCredits === 0) {
-      // Pop up the premium modal when credits hit 0
-      setIsPremiumModalOpen(true);
-    }
-
-    return true;
-  }, [profile.credits, profile.isPremium]);
+      };
+    });
+  }, []);
 
   /**
    * Restores daily credits (20 credits by default)

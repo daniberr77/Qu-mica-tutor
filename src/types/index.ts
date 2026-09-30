@@ -107,6 +107,8 @@ export interface StudentProfile {
   totalMessagesSent?: number;
 }
 
+export type Profile = StudentProfile;
+
 export * from './billing';
 
 export interface ConversationSession {

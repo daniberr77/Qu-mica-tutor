@@ -243,3 +243,5 @@ export const PremiumModal: React.FC<PremiumModalProps> = ({ isOpen, onClose }) =
     </div>
   );
 };
+
+export default PremiumModal;
