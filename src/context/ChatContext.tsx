@@ -98,7 +98,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       setConversations((prev) => [newSession, ...prev]);
       setActiveConversationId(newId);
-      setCurrentModeState(mode);
+      setCurrentMode(mode);
       return newId;
     },
     []
@@ -164,7 +164,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const fresh = createDefaultInitialConversation();
     setConversations([fresh]);
     setActiveConversationId(fresh.id);
-    setCurrentModeState('didactic');
+    setCurrentMode('didactic');
   }, []);
 
   const exportConversation = useCallback(
