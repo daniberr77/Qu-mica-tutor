@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { ConversationSession, TutorModeType, ChatExportFormat } from '../types';
 import {
   getStoredConversations,
@@ -36,7 +36,7 @@ interface ChatContextType {
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
 
 export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { addXp } = useStudent();
+  const { addXp, deductCredit, profile, setIsPremiumModalOpen } = useStudent();
 
   const [conversations, setConversations] = useState<ConversationSession[]>(() => {
     return getStoredConversations();
@@ -52,6 +52,8 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
 
   const [isTyping, setIsTyping] = useState<boolean>(false);
+  const lastSendTimestampRef = useRef<number>(0);
+  const RATE_LIMIT_COOLDOWN_MS = 1200; // Control de frecuencia para evitar saturación del servicio
 
   // Persist conversations
   useEffect(() => {
@@ -188,7 +190,26 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const sendMessage = useCallback(
     async (text: string) => {
       const trimmed = text.trim();
-      if (!trimmed || isTyping) return;
+      const now = Date.now();
+      // Control de envíos (Rate Limiting): Bloquear peticiones duplicadas o envíos consecutivos rápidos
+      if (!trimmed || isTyping || now - lastSendTimestampRef.current < RATE_LIMIT_COOLDOWN_MS) {
+        return;
+      }
+
+      // Verificación estricta de créditos diarios y Premium
+      if (!profile.isPremium && profile.credits <= 0) {
+        setIsPremiumModalOpen(true);
+        return;
+      }
+
+      // Deducir 1 crédito por mensaje enviado al tutor Gemini
+      const creditDeducted = await deductCredit();
+      if (!creditDeducted) {
+        setIsPremiumModalOpen(true);
+        return;
+      }
+
+      lastSendTimestampRef.current = now;
 
       const userTime = new Date().toLocaleTimeString('es-ES', {
         hour: '2-digit',
@@ -308,7 +329,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setIsTyping(false);
       }
     },
-    [activeConversationId, isTyping, currentMode, addXp, conversations]
+    [activeConversationId, isTyping, currentMode, addXp, conversations, profile, deductCredit, setIsPremiumModalOpen]
   );
 
   const value = {

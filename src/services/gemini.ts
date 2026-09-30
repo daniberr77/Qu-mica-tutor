@@ -202,6 +202,184 @@ const parseModelResponse = (rawText: string): { text: string; suggestedFollowUps
 };
 
 /**
+ * Detecta si un error corresponde a un código HTTP 503 (Servicio no disponible / alta demanda de servidores).
+ */
+export function is503Error(err: any): boolean {
+  if (!err) return false;
+  const status = err?.status ?? err?.code ?? err?.error?.code ?? err?.error?.status;
+  if (status === 503 || status === '503' || status === 'UNAVAILABLE') {
+    return true;
+  }
+  const errString = typeof err?.message === 'string' ? err.message : JSON.stringify(err || '');
+  return (
+    errString.includes('503') ||
+    errString.includes('UNAVAILABLE') ||
+    errString.includes('Service Unavailable') ||
+    errString.includes('The model is overloaded') ||
+    errString.includes('overloaded')
+  );
+}
+
+/**
+ * Tiempos de espera para reintentos exponenciales en caso de 503 (1s, 2s, 4s).
+ */
+export const EXPONENTIAL_BACKOFF_DELAYS = [1000, 2000, 4000];
+
+/**
+ * Ejecuta una operación asíncrona reintentando automáticamente hasta 3 veces
+ * con retroceso exponencial (1s, 2s, 4s) si ocurre un error 503 (Unavailable / Overloaded).
+ */
+export async function executeWithExponentialBackoff<T>(
+  operation: () => Promise<T>,
+  maxRetries: number = 3,
+  delays: number[] = EXPONENTIAL_BACKOFF_DELAYS
+): Promise<T> {
+  let attempt = 0;
+  while (true) {
+    try {
+      return await operation();
+    } catch (err: any) {
+      if (is503Error(err) && attempt < maxRetries) {
+        const delayMs = delays[attempt] ?? (1000 * Math.pow(2, attempt));
+        console.warn(
+          `[Gemini 503 High Availability] Servidor con alta demanda. Reintento automático ${attempt + 1}/${maxRetries} tras ${delayMs / 1000}s...`
+        );
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        attempt++;
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
+/**
+ * Estructura de una respuesta almacenada en la memoria temporal del cliente.
+ */
+export interface CachedResponseEntry {
+  text: string;
+  suggestedFollowUps: string[];
+  timestamp: number;
+}
+
+const RESPONSE_CACHE_STORAGE_KEY = 'quimibot_response_cache_v1';
+const MAX_CACHE_ENTRIES = 120;
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 horas
+
+/**
+ * Normaliza la consulta y el modo del tutor para la clave de caché.
+ * Remueve tildes, signos de puntuación, mayúsculas y espacios duplicados.
+ */
+export function normalizeCacheKey(message: string, mode: TutorMode = 'didactic'): string {
+  const clean = (message || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // Elimina acentos/tildes
+    .replace(/[¿?¡!.,;:_()\-+*/"'`[\]{}]/g, ' ') // Elimina puntuación
+    .replace(/\s+/g, ' ')
+    .trim();
+  return `${mode}::${clean}`;
+}
+
+/**
+ * Carga la caché desde sessionStorage para persistencia en la sesión temporal del cliente.
+ */
+function loadSessionResponseCache(): Map<string, CachedResponseEntry> {
+  const cacheMap = new Map<string, CachedResponseEntry>();
+  if (typeof window === 'undefined' || !window.sessionStorage) {
+    return cacheMap;
+  }
+  try {
+    const raw = sessionStorage.getItem(RESPONSE_CACHE_STORAGE_KEY);
+    if (raw) {
+      const parsed: Record<string, CachedResponseEntry> = JSON.parse(raw);
+      const now = Date.now();
+      for (const [key, entry] of Object.entries(parsed)) {
+        if (entry && entry.text && now - entry.timestamp < CACHE_TTL_MS) {
+          cacheMap.set(key, entry);
+        }
+      }
+    }
+  } catch {
+    // Ignorar errores de acceso a storage
+  }
+  return cacheMap;
+}
+
+/**
+ * Persiste la memoria temporal en sessionStorage.
+ */
+function saveSessionResponseCache(cacheMap: Map<string, CachedResponseEntry>): void {
+  if (typeof window === 'undefined' || !window.sessionStorage) return;
+  try {
+    const entries = Array.from(cacheMap.entries()).slice(-MAX_CACHE_ENTRIES);
+    const obj = Object.fromEntries(entries);
+    sessionStorage.setItem(RESPONSE_CACHE_STORAGE_KEY, JSON.stringify(obj));
+  } catch {
+    // Ignorar error si excede la cuota de sessionStorage
+  }
+}
+
+// Instancia en memoria temporal activa del cliente
+const responseMemoryCache = loadSessionResponseCache();
+
+/**
+ * Obtiene una respuesta de la caché temporal si la consulta ya fue formulada previamente.
+ */
+export function getCachedTutorResponse(
+  userMessage: string,
+  mode: TutorMode = 'didactic'
+): SocraticTutorResult | null {
+  const key = normalizeCacheKey(userMessage, mode);
+  const entry = responseMemoryCache.get(key);
+  if (!entry) return null;
+
+  if (Date.now() - entry.timestamp > CACHE_TTL_MS) {
+    responseMemoryCache.delete(key);
+    saveSessionResponseCache(responseMemoryCache);
+    return null;
+  }
+
+  return {
+    text: entry.text,
+    suggestedFollowUps: entry.suggestedFollowUps || [],
+    isFallback: false,
+  };
+}
+
+/**
+ * Almacena una respuesta válida en la memoria temporal del cliente.
+ */
+export function setCachedTutorResponse(
+  userMessage: string,
+  mode: TutorMode,
+  result: SocraticTutorResult
+): void {
+  if (!result || result.isFallback || result.error || !result.text) return;
+  const key = normalizeCacheKey(userMessage, mode);
+  responseMemoryCache.set(key, {
+    text: result.text,
+    suggestedFollowUps: result.suggestedFollowUps || [],
+    timestamp: Date.now(),
+  });
+  saveSessionResponseCache(responseMemoryCache);
+}
+
+/**
+ * Limpia la memoria temporal de respuestas de la sesión.
+ */
+export function clearTutorResponseCache(): void {
+  responseMemoryCache.clear();
+  if (typeof window !== 'undefined' && window.sessionStorage) {
+    try {
+      sessionStorage.removeItem(RESPONSE_CACHE_STORAGE_KEY);
+    } catch {
+      // Ignorar
+    }
+  }
+}
+
+/**
  * Función principal que envía el mensaje del usuario y su historial al tutor socrático de Gemini.
  *
  * @param options Parámetros de la consulta (mensaje, historial, modo, tema, modelo)
@@ -231,6 +409,13 @@ export async function sendSocraticTutorPrompt(
     };
   }
 
+  // 2. Caché de respuestas: Servir de inmediato si otro usuario o consulta previa ya preguntó lo mismo
+  const cachedResponse = getCachedTutorResponse(userMessage, mode);
+  if (cachedResponse) {
+    console.info(`[Gemini Cache Hit] Consulta frecuente servida de inmediato desde memoria temporal: "${userMessage}"`);
+    return cachedResponse;
+  }
+
   try {
     const ai = getGeminiClient();
     let selectedModel =
@@ -257,21 +442,23 @@ export async function sendSocraticTutorPrompt(
       parts: [{ text: userMessage }],
     });
 
-    // Llamada a la API de Gemini mediante el SDK @google/genai
-    const response = await ai.models.generateContent({
-      model: selectedModel,
-      contents: formattedContents,
-      config: {
-        systemInstruction,
-        temperature: 0.7,
-        topP: 0.95,
-      },
-    });
+    // Llamada a la API de Gemini mediante el SDK @google/genai con Reintentos Automáticos (Exponential Backoff 1s, 2s, 4s)
+    const response = await executeWithExponentialBackoff(async () => {
+      return await ai.models.generateContent({
+        model: selectedModel,
+        contents: formattedContents,
+        config: {
+          systemInstruction,
+          temperature: 0.7,
+          topP: 0.95,
+        },
+      });
+    }, 3, EXPONENTIAL_BACKOFF_DELAYS);
 
     const candidateText = response.text || '';
     const parsed = parseModelResponse(candidateText);
 
-    return {
+    const tutorResult: SocraticTutorResult = {
       text: parsed.text || 'Entendido. Cuéntame más sobre este problema para guiarte en el siguiente paso.',
       suggestedFollowUps: parsed.suggestedFollowUps.length > 0
         ? parsed.suggestedFollowUps
@@ -282,23 +469,16 @@ export async function sendSocraticTutorPrompt(
           ],
       isFallback: false,
     };
+
+    // Almacenar en la memoria temporal del cliente para futuras consultas idénticas
+    setCachedTutorResponse(userMessage, mode, tutorResult);
+
+    return tutorResult;
   } catch (err: any) {
     console.error('Error al invocar la API de Gemini:', err);
 
-    // Detectar específicamente error 503 (Servicio no disponible / alta demanda)
-    const errString = typeof err?.message === 'string' ? err.message : JSON.stringify(err || '');
-    const is503 =
-      err?.status === 503 ||
-      err?.code === 503 ||
-      err?.error?.code === 503 ||
-      err?.error?.status === 'UNAVAILABLE' ||
-      errString.includes('503') ||
-      errString.includes('UNAVAILABLE') ||
-      errString.includes('Service Unavailable') ||
-      errString.includes('The model is overloaded') ||
-      errString.includes('overloaded');
-
-    if (is503) {
+    // Detectar error 503 (Servicio no disponible / alta demanda) tras agotarse los 3 reintentos
+    if (is503Error(err)) {
       return {
         text: 'El tutor está procesando muchas consultas en este momento. Dame un par de segundos y vuelve a intentarlo',
         suggestedFollowUps: ['Reintentar pregunta', 'Ver conceptos del temario'],
@@ -407,15 +587,17 @@ Si es de tipo "numeric" (para estequiometría o gases):
 
 IMPORTANTE: Responde ÚNICAMENTE con el objeto JSON puro sin envolver en bloques de código markdown.`;
 
-    const response = await ai.models.generateContent({
-      model: selectedModel,
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      config: {
-        systemInstruction,
-        temperature: 0.7,
-        responseMimeType: 'application/json',
-      },
-    });
+    const response = await executeWithExponentialBackoff(async () => {
+      return await ai.models.generateContent({
+        model: selectedModel,
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        config: {
+          systemInstruction,
+          temperature: 0.7,
+          responseMimeType: 'application/json',
+        },
+      });
+    }, 3, EXPONENTIAL_BACKOFF_DELAYS);
 
     const rawJson = response.text?.trim() || '';
     const cleanJson = rawJson.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
