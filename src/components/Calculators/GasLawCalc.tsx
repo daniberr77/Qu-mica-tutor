@@ -47,7 +47,7 @@ export const GasLawCalc: React.FC = () => {
             <Wind className="w-6 h-6" />
           </div>
           <div>
-            <h3 className="text-xl font-bold text-slate-900 dark:text-white">Simulador de Gases Ideales ($PV = nRT$)</h3>
+            <h3 className="text-xl font-bold text-slate-900 dark:text-white">Simulador de Gases Ideales (PV = nRT)</h3>
             <p className="text-sm text-slate-500 dark:text-slate-400">Calcula y visualiza la relación entre presión, volumen, cantidad y temperatura</p>
           </div>
         </div>
