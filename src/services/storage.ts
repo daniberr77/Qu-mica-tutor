@@ -23,6 +23,13 @@ export const DEFAULT_STUDENT_PROFILE: StudentProfile = {
   masteredFlashcards: [],
   favoriteElements: [1, 6, 8],
   notes: {},
+  credits: 15,
+  dailyCreditLimit: 15,
+  lastCreditResetDate: getTodayDateString(),
+  isPremium: false,
+  premiumPlanType: null,
+  premiumSince: null,
+  totalMessagesSent: 0,
 };
 
 export const createDefaultInitialConversation = (): ConversationSession => {
@@ -70,11 +77,22 @@ function safeSet<T>(key: string, value: T): boolean {
 // Student Profile Methods
 export function getStoredProfile(): StudentProfile {
   const profile = safeGet<StudentProfile>(KEY_PROFILE, DEFAULT_STUDENT_PROFILE);
-  // Ensure all keys exist in case of schema migrations
-  return {
+  const today = getTodayDateString();
+
+  // Merge defaults with stored profile
+  const merged: StudentProfile = {
     ...DEFAULT_STUDENT_PROFILE,
     ...profile,
   };
+
+  // Check if credits need daily renewal (new day)
+  if (merged.lastCreditResetDate !== today) {
+    merged.credits = merged.isPremium ? 9999 : merged.dailyCreditLimit || 20;
+    merged.lastCreditResetDate = today;
+    safeSet(KEY_PROFILE, merged);
+  }
+
+  return merged;
 }
 
 export function saveStoredProfile(profile: StudentProfile): boolean {

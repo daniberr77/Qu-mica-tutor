@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import type { StudentProfile, StudyLevel } from '../types';
 import {
   getStoredProfile,
@@ -6,9 +6,25 @@ import {
   DEFAULT_STUDENT_PROFILE,
   getTodayDateString,
 } from '../services/storage';
+import {
+  fetchStudentProfileFromDb,
+  saveStudentProfileToDb,
+  subscribeToStudentProfile,
+  isFirebaseConfigured,
+  sanitizeStudentProfile,
+} from '../services/firebase';
+
+export type DatabaseStatus = 'firestore' | 'local_fallback' | 'connecting';
 
 interface StudentContextType {
   profile: StudentProfile;
+  dbStatus: DatabaseStatus;
+  isPremiumModalOpen: boolean;
+  setIsPremiumModalOpen: (open: boolean) => void;
+  isCheckoutOpen: boolean;
+  checkoutPlanId: string | null;
+  openCheckout: (planId?: string) => void;
+  closeCheckout: () => void;
   updateName: (name: string) => void;
   updateLevel: (level: StudyLevel) => void;
   updateAvatar: (avatar: string) => void;
@@ -19,6 +35,11 @@ interface StudentContextType {
   toggleFavoriteElement: (atomicNumber: number) => void;
   saveNote: (subtopicId: string, note: string) => void;
   resetProgress: () => void;
+  // Métodos de créditos y versión Premium
+  deductCredit: () => Promise<boolean>;
+  restoreDailyCredits: (amount?: number) => void;
+  upgradeToPremium: (planType?: 'subscription' | 'one_time') => void;
+  cancelPremium: () => void;
 }
 
 const StudentContext = createContext<StudentContextType | undefined>(undefined);
@@ -37,28 +58,111 @@ export const StudentProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       let newStreak = loaded.streakDays;
       if (diffDays === 1) {
-        // Consecutive day
         newStreak += 1;
       } else if (diffDays > 1) {
-        // Broken streak
         newStreak = 1;
       }
 
-      const updated = {
+      // Check daily credits reset
+      const refreshedCredits = loaded.isPremium
+        ? 9999
+        : (loaded.lastCreditResetDate !== today ? (loaded.dailyCreditLimit || 20) : loaded.credits);
+
+      const updated: StudentProfile = {
         ...loaded,
         streakDays: newStreak,
         lastActiveDate: today,
+        lastCreditResetDate: today,
+        credits: refreshedCredits,
       };
       saveStoredProfile(updated);
       return updated;
     }
 
-    return loaded;
+    return sanitizeStudentProfile(loaded);
   });
 
-  // Save changes to storage whenever profile changes
+  const [dbStatus, setDbStatus] = useState<DatabaseStatus>(
+    isFirebaseConfigured() ? 'connecting' : 'local_fallback'
+  );
+  const [isPremiumModalOpen, setIsPremiumModalOpen] = useState<boolean>(false);
+  const [isCheckoutOpen, setIsCheckoutOpen] = useState<boolean>(false);
+  const [checkoutPlanId, setCheckoutPlanId] = useState<string | null>(null);
+  const isInitialSyncRef = useRef<boolean>(true);
+
+  // Escuchar eventos globales de Webhooks de Stripe simulados o reales
   useEffect(() => {
-    saveStoredProfile(profile);
+    const handleWebhookEvent = (e: Event) => {
+      const customEvent = e as CustomEvent<{ updatedProfile: StudentProfile }>;
+      if (customEvent.detail?.updatedProfile) {
+        setProfile(customEvent.detail.updatedProfile);
+      } else {
+        const stored = getStoredProfile();
+        setProfile(stored);
+      }
+    };
+
+    window.addEventListener('quimica_stripe_webhook_received', handleWebhookEvent);
+    return () => {
+      window.removeEventListener('quimica_stripe_webhook_received', handleWebhookEvent);
+    };
+  }, []);
+
+  const openCheckout = useCallback((planId: string = 'premium_monthly') => {
+    setCheckoutPlanId(planId);
+    setIsCheckoutOpen(true);
+    setIsPremiumModalOpen(false);
+  }, []);
+
+  const closeCheckout = useCallback(() => {
+    setIsCheckoutOpen(false);
+    setCheckoutPlanId(null);
+  }, []);
+
+  // Sync with Firestore on mount
+  useEffect(() => {
+    let unsubscribe: (() => void) | null = null;
+
+    const initDbSync = async () => {
+      if (isFirebaseConfigured()) {
+        try {
+          setDbStatus('connecting');
+          const remoteProfile = await fetchStudentProfileFromDb(profile.id);
+          setProfile(remoteProfile);
+          setDbStatus('firestore');
+
+          // Attach realtime listener
+          const unsub = subscribeToStudentProfile(profile.id, (updated) => {
+            setProfile(updated);
+          });
+          if (unsub) {
+            unsubscribe = unsub;
+          }
+        } catch (err) {
+          console.warn('[Firestore] Fallback to local storage:', err);
+          setDbStatus('local_fallback');
+        }
+      } else {
+        setDbStatus('local_fallback');
+      }
+    };
+
+    initDbSync();
+
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
+  }, []);
+
+  // Save changes to Firestore / LocalStorage whenever profile changes (skip first mount)
+  useEffect(() => {
+    if (isInitialSyncRef.current) {
+      isInitialSyncRef.current = false;
+      return;
+    }
+    saveStudentProfileToDb(profile);
   }, [profile]);
 
   const updateName = useCallback((name: string) => {
@@ -92,7 +196,7 @@ export const StudentProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       const newModules = [...prev.completedModules];
       if (moduleId && !isCompleted && !newModules.includes(moduleId)) {
-        // You can conditionally mark module completed if all subtopics are finished
+        // You can conditionally mark module completed
       }
 
       const xpBonus = !isCompleted ? 25 : 0;
@@ -120,7 +224,6 @@ export const StudentProvider: React.FC<{ children: React.ReactNode }> = ({ child
         timestamp: new Date().toISOString(),
       };
 
-      // Award XP for taking quiz and bonus for high scores
       let xpEarned = score * 15;
       if (percentage === 100) xpEarned += 50;
 
@@ -179,16 +282,109 @@ export const StudentProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, []);
 
   const resetProgress = useCallback(() => {
+    const today = getTodayDateString();
     const reset = {
       ...DEFAULT_STUDENT_PROFILE,
-      lastActiveDate: getTodayDateString(),
+      lastActiveDate: today,
+      lastCreditResetDate: today,
+      credits: 20,
     };
     setProfile(reset);
-    saveStoredProfile(reset);
+    saveStudentProfileToDb(reset);
+  }, []);
+
+  /**
+   * Deducts 1 credit when a student sends a message to Gemini.
+   * If credits reach 0, opens the Premium modal and returns false if no credits were left.
+   */
+  const deductCredit = useCallback(async (): Promise<boolean> => {
+    if (profile.isPremium) {
+      setProfile((prev) => ({
+        ...prev,
+        totalMessagesSent: (prev.totalMessagesSent || 0) + 1,
+      }));
+      return true;
+    }
+
+    if (profile.credits <= 0) {
+      setIsPremiumModalOpen(true);
+      return false;
+    }
+
+    const nextCredits = Math.max(0, profile.credits - 1);
+    setProfile((prev) => ({
+      ...prev,
+      credits: nextCredits,
+      totalMessagesSent: (prev.totalMessagesSent || 0) + 1,
+    }));
+
+    if (nextCredits === 0) {
+      // Pop up the premium modal when credits hit 0
+      setIsPremiumModalOpen(true);
+    }
+
+    return true;
+  }, [profile.credits, profile.isPremium]);
+
+  /**
+   * Restores daily credits (20 credits by default)
+   */
+  const restoreDailyCredits = useCallback((amount: number = 20) => {
+    const today = getTodayDateString();
+    setProfile((prev) => {
+      const updated: StudentProfile = {
+        ...prev,
+        credits: amount,
+        dailyCreditLimit: amount,
+        lastCreditResetDate: today,
+      };
+      saveStudentProfileToDb(updated);
+      return updated;
+    });
+  }, []);
+
+  /**
+   * Upgrades the student to Premium (unlimited credits)
+   */
+  const upgradeToPremium = useCallback((planType: 'subscription' | 'one_time' = 'subscription') => {
+    setProfile((prev) => {
+      const updated: StudentProfile = {
+        ...prev,
+        isPremium: true,
+        premiumPlanType: planType,
+        premiumSince: new Date().toISOString(),
+        credits: 9999,
+      };
+      saveStudentProfileToDb(updated);
+      return updated;
+    });
+  }, []);
+
+  /**
+   * Reverts student to Free tier with 15 credits
+   */
+  const cancelPremium = useCallback(() => {
+    setProfile((prev) => {
+      const updated: StudentProfile = {
+        ...prev,
+        isPremium: false,
+        premiumPlanType: null,
+        credits: 15,
+      };
+      saveStudentProfileToDb(updated);
+      return updated;
+    });
   }, []);
 
   const value = {
     profile,
+    dbStatus,
+    isPremiumModalOpen,
+    setIsPremiumModalOpen,
+    isCheckoutOpen,
+    checkoutPlanId,
+    openCheckout,
+    closeCheckout,
     updateName,
     updateLevel,
     updateAvatar,
@@ -199,6 +395,10 @@ export const StudentProvider: React.FC<{ children: React.ReactNode }> = ({ child
     toggleFavoriteElement,
     saveNote,
     resetProgress,
+    deductCredit,
+    restoreDailyCredits,
+    upgradeToPremium,
+    cancelPremium,
   };
 
   return <StudentContext.Provider value={value}>{children}</StudentContext.Provider>;

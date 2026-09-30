@@ -96,7 +96,18 @@ export interface StudentProfile {
   masteredFlashcards: string[];
   favoriteElements: number[];
   notes: Record<string, string>;
+  // Créditos diarios y suscripción Premium
+  credits: number;
+  dailyCreditLimit: number;
+  lastCreditResetDate: string; // YYYY-MM-DD
+  isPremium: boolean;
+  premiumPlanType?: 'subscription' | 'one_time' | null;
+  premiumSince?: string | null;
+  premiumExpiresAt?: string;
+  totalMessagesSent?: number;
 }
+
+export * from './billing';
 
 export interface ConversationSession {
   id: string;

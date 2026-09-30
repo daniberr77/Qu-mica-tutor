@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useChatHistory, useStudent } from '../../context';
 import { ConversationHistoryDrawer } from './ConversationHistoryDrawer';
-import { PremiumModal } from '../PremiumModal';
 import { TUTOR_MODES } from '../../data/tutorKnowledge';
 import type { TutorModeType } from '../../types';
 import {
@@ -40,6 +39,7 @@ export const ChatInterface: React.FC = () => {
     profile,
     isPremiumModalOpen,
     setIsPremiumModalOpen,
+    openCheckout,
   } = useStudent();
 
   const [inputText, setInputText] = useState('');
@@ -438,19 +438,19 @@ export const ChatInterface: React.FC = () => {
             <div className="flex items-center gap-2 text-rose-800 dark:text-rose-200 font-medium">
               <AlertCircle className="w-5 h-5 shrink-0 text-rose-500 animate-bounce" />
               <div>
-                <p className="font-bold text-sm">Has alcanzado tu límite de 20 créditos diarios</p>
+                <p className="font-bold text-sm">Has alcanzado tu límite de {profile.dailyCreditLimit || 15} créditos diarios</p>
                 <p className="text-[11px] text-slate-600 dark:text-slate-300">
-                  Tus 20 créditos gratuitos se renovarán a las 00:00. Pásate a Premium para consultas ilimitadas con Gemini AI.
+                  Tus créditos gratuitos se renovarán a las 00:00. Pásate al Modo Premium con Stripe para consultas ilimitadas y laboratorios 3D.
                 </p>
               </div>
             </div>
 
             <button
-              onClick={() => setIsPremiumModalOpen(true)}
+              onClick={() => openCheckout('premium_monthly')}
               className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 via-rose-500 to-indigo-600 hover:from-amber-600 hover:to-indigo-700 text-white font-bold text-xs shadow-md hover:shadow-lg flex items-center gap-1.5 shrink-0 transition-transform active:scale-95 cursor-pointer"
             >
               <Crown className="w-4 h-4 text-amber-200" />
-              <span>Adquirir Versión Premium</span>
+              <span>Desbloquear con Stripe</span>
               <Sparkles className="w-3.5 h-3.5 text-amber-200" />
             </button>
           </div>
@@ -532,12 +532,6 @@ export const ChatInterface: React.FC = () => {
       <ConversationHistoryDrawer
         isOpen={isHistoryOpen}
         onClose={() => setIsHistoryOpen(false)}
-      />
-
-      {/* Premium Upgrade Modal */}
-      <PremiumModal
-        isOpen={isPremiumModalOpen}
-        onClose={() => setIsPremiumModalOpen(false)}
       />
     </div>
   );

@@ -15,9 +15,11 @@
     "@types/canvas-confetti": "^1.9.0",
     "@types/three": "^0.186.0",
     "canvas-confetti": "^1.9.4",
+    "firebase": "^12.19.0",
     "lucide-react": "^1.48.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
+    "react-router-dom": "^7.18.4",
     "tailwindcss": "^4.3.3",
     "three": "^0.186.1"
   },

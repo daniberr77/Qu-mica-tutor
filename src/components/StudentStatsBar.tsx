@@ -9,10 +9,21 @@ import {
   Edit3,
   Check,
   RotateCcw,
+  Zap,
+  Crown,
+  Database,
 } from 'lucide-react';
 
-export const StudentStatsBar: React.FC = () => {
-  const { profile, updateName, updateLevel, resetProgress } = useStudent();
+export const StudentStatsBar: React.FC<{ onNavigateToPlans?: () => void }> = ({ onNavigateToPlans }) => {
+  const {
+    profile,
+    updateName,
+    updateLevel,
+    resetProgress,
+    openCheckout,
+    setIsPremiumModalOpen,
+    dbStatus,
+  } = useStudent();
   const [isEditingName, setIsEditingName] = useState(false);
   const [tempName, setTempName] = useState(profile.name);
   const [showLevelMenu, setShowLevelMenu] = useState(false);
@@ -127,8 +138,42 @@ export const StudentStatsBar: React.FC = () => {
           </div>
         </div>
 
-        {/* Gamification Stats: Streak & XP */}
+        {/* Gamification Stats: Daily Credits, Streak & XP */}
         <div className="flex items-center gap-3">
+          {/* Daily Credits / Premium Pill */}
+          {profile.isPremium ? (
+            <button
+              onClick={() => {
+                if (onNavigateToPlans) onNavigateToPlans();
+                else openCheckout('premium_monthly');
+              }}
+              title="Membresía QuimiBot Premium Activa: Consultas ilimitadas con Gemini y Simuladores 3D desbloqueados"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-indigo-600 text-white border border-amber-300 shadow-xs hover:opacity-95 transition-all cursor-pointer"
+            >
+              <Crown className="w-4 h-4 text-amber-200" />
+              <span className="text-xs font-bold">Premium Ilimitado ✨</span>
+            </button>
+          ) : (
+            <button
+              onClick={() => openCheckout('premium_monthly')}
+              title="Créditos diarios gratuitos para consultas con Gemini. Haz clic para adquirir Modo Premium con Stripe"
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border shadow-xs transition-transform hover:scale-105 cursor-pointer ${
+                profile.credits > 5
+                  ? 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300'
+                  : profile.credits > 0
+                  ? 'bg-amber-50 dark:bg-amber-950/50 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 animate-pulse'
+                  : 'bg-rose-50 dark:bg-rose-950/50 border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300 font-extrabold'
+              }`}
+            >
+              <Zap className={`w-4 h-4 ${profile.credits === 0 ? 'text-rose-600 fill-rose-600' : 'text-amber-500 fill-amber-500'}`} />
+              <span className="text-xs font-bold">{profile.credits}/{profile.dailyCreditLimit || 15}</span>
+              <span className="text-xs hidden sm:inline">créditos</span>
+              <span className="text-[10px] font-black uppercase px-1.5 py-0.2 rounded bg-amber-400 text-slate-900 ml-1">
+                Upgrade
+              </span>
+            </button>
+          )}
+
           {/* Study streak */}
           <div
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 shadow-xs"
@@ -154,6 +199,24 @@ export const StudentStatsBar: React.FC = () => {
                 />
               </div>
             </div>
+          </div>
+
+          {/* Database status indicator */}
+          <div
+            className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 text-xs"
+            title={
+              dbStatus === 'firestore'
+                ? 'Base de datos Firestore conectada en tiempo real'
+                : dbStatus === 'connecting'
+                ? 'Conectando con base de datos Firestore...'
+                : 'Almacenamiento seguro activo (Configura Firestore en .env para sincronización multi-dispositivo)'
+            }
+          >
+            <Database className="w-3.5 h-3.5 text-slate-400" />
+            <span className={`w-1.5 h-1.5 rounded-full ${dbStatus === 'firestore' ? 'bg-emerald-500' : dbStatus === 'connecting' ? 'bg-amber-500 animate-ping' : 'bg-blue-400'}`} />
+            <span className="text-[11px] font-medium hidden lg:inline">
+              {dbStatus === 'firestore' ? 'Firestore DB' : 'Local DB'}
+            </span>
           </div>
 
           {/* Reset progress button */}
