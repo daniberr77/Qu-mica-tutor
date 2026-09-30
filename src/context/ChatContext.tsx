@@ -253,10 +253,24 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
             mode: currentMode,
           });
 
+          let replyText = socraticResult.text;
+          const is503 =
+            socraticResult.error === '503_SERVICE_UNAVAILABLE' ||
+            socraticResult.error?.includes('503') ||
+            socraticResult.error?.includes('UNAVAILABLE') ||
+            replyText.includes('503') ||
+            replyText.includes('UNAVAILABLE') ||
+            replyText.includes('overloaded');
+
+          if (is503) {
+            replyText =
+              'El tutor está procesando muchas consultas en este momento. Dame un par de segundos y vuelve a intentarlo';
+          }
+
           replyWithTime = {
             id: 'tutor-' + Date.now(),
             sender: 'tutor' as const,
-            text: socraticResult.text,
+            text: replyText,
             timestamp: new Date().toLocaleTimeString('es-ES', {
               hour: '2-digit',
               minute: '2-digit',

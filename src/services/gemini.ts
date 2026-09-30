@@ -248,6 +248,28 @@ export async function sendSocraticTutorPrompt(
   } catch (err: any) {
     console.error('Error al invocar la API de Gemini:', err);
 
+    // Detectar específicamente error 503 (Servicio no disponible / alta demanda)
+    const errString = typeof err?.message === 'string' ? err.message : JSON.stringify(err || '');
+    const is503 =
+      err?.status === 503 ||
+      err?.code === 503 ||
+      err?.error?.code === 503 ||
+      err?.error?.status === 'UNAVAILABLE' ||
+      errString.includes('503') ||
+      errString.includes('UNAVAILABLE') ||
+      errString.includes('Service Unavailable') ||
+      errString.includes('The model is overloaded') ||
+      errString.includes('overloaded');
+
+    if (is503) {
+      return {
+        text: 'El tutor está procesando muchas consultas en este momento. Dame un par de segundos y vuelve a intentarlo',
+        suggestedFollowUps: ['Reintentar pregunta', 'Ver conceptos del temario'],
+        isFallback: true,
+        error: '503_SERVICE_UNAVAILABLE',
+      };
+    }
+
     let errorMessage = 'Ocurrió un error al conectar con el tutor de Gemini.';
     if (err?.status === 429 || err?.message?.includes('RESOURCE_EXHAUSTED')) {
       errorMessage = '⚠️ Se ha excedido la cuota de peticiones de la API de Gemini. Espera un momento antes de volver a consultar.';

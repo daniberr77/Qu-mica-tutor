@@ -68,12 +68,46 @@ export const ChatTutor: React.FC<ChatTutorProps> = ({
         mode: activeMode,
       })
         .then((res) => {
+          let replyText = res.text;
+          const is503 =
+            res.error === '503_SERVICE_UNAVAILABLE' ||
+            res.error?.includes('503') ||
+            res.error?.includes('UNAVAILABLE') ||
+            replyText.includes('503') ||
+            replyText.includes('UNAVAILABLE') ||
+            replyText.includes('overloaded');
+
+          if (is503) {
+            replyText =
+              'El tutor está procesando muchas consultas en este momento. Dame un par de segundos y vuelve a intentarlo';
+          }
+
           const response: ChatMessage = {
             id: 'tutor-' + Date.now(),
             sender: 'tutor',
-            text: res.text,
+            text: replyText,
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             suggestedFollowUps: res.suggestedFollowUps,
+          };
+          setMessages((prev) => [...prev, response]);
+        })
+        .catch((err) => {
+          const errStr = typeof err?.message === 'string' ? err.message : JSON.stringify(err || '');
+          const is503 =
+            err?.status === 503 ||
+            err?.code === 503 ||
+            errStr.includes('503') ||
+            errStr.includes('UNAVAILABLE') ||
+            errStr.includes('overloaded');
+
+          const response: ChatMessage = {
+            id: 'tutor-' + Date.now(),
+            sender: 'tutor',
+            text: is503
+              ? 'El tutor está procesando muchas consultas en este momento. Dame un par de segundos y vuelve a intentarlo'
+              : 'Ocurrió un error al conectar con el tutor de química. Intenta de nuevo en unos segundos.',
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            suggestedFollowUps: ['Reintentar pregunta', 'Consultar otro tema'],
           };
           setMessages((prev) => [...prev, response]);
         })
