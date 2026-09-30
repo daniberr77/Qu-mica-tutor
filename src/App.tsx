@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, Suspense, lazy } from 'react';
 import { AppProviders, useChatHistory } from './context';
 import { StudentStatsBar } from './components/StudentStatsBar';
 import { ChatInterface } from './components/Chat/ChatInterface';
@@ -8,6 +8,7 @@ import { GasLawCalc } from './components/Calculators/GasLawCalc';
 import { PhCalc } from './components/Calculators/PhCalc';
 import { ChallengeZone } from './components/ChallengeZone';
 import { BalancingAndCalcHub } from './components/BalancingAndCalc/BalancingAndCalcHub';
+import { Loading3DFallback } from './components/VirtualLab/Loading3DFallback';
 import {
   MessageSquare,
   History,
@@ -15,6 +16,7 @@ import {
   Atom,
   Flame,
   Scale,
+  FlaskConical,
   Download,
   Trash2,
   Plus,
@@ -24,8 +26,10 @@ import {
   Search,
 } from 'lucide-react';
 
+const VirtualLabHub = lazy(() => import('./components/VirtualLab/VirtualLabHub'));
+
 const DashboardContent: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'chat' | 'challenges' | 'history' | 'balancing' | 'calculators' | 'table'>('chat');
+  const [activeTab, setActiveTab] = useState<'chat' | 'lab' | 'balancing' | 'challenges' | 'history' | 'calculators' | 'table'>('chat');
   const [calcSubTab, setCalcSubTab] = useState<'molar' | 'gas' | 'ph'>('molar');
   const [historySearch, setHistorySearch] = useState('');
   const [editingTitleId, setEditingTitleId] = useState<string | null>(null);
@@ -92,6 +96,27 @@ const DashboardContent: React.FC = () => {
             >
               <MessageSquare className="w-4 h-4" />
               <span>Tutor QuimiBot</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('lab')}
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
+                activeTab === 'lab'
+                  ? 'bg-gradient-to-r from-cyan-600 via-indigo-600 to-purple-600 text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <FlaskConical className="w-4 h-4" />
+              <span>Laboratorio Virtual</span>
+              <span
+                className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                  activeTab === 'lab'
+                    ? 'bg-white/20 text-white'
+                    : 'bg-cyan-100 dark:bg-cyan-950 text-cyan-800 dark:text-cyan-300'
+                }`}
+              >
+                3D
+              </span>
             </button>
 
             <button
@@ -398,6 +423,23 @@ const DashboardContent: React.FC = () => {
           </div>
         )}
 
+        {activeTab === 'lab' && (
+          <Suspense
+            fallback={
+              <div className="flex-1 max-w-7xl mx-auto w-full p-6">
+                <Loading3DFallback message="Cargando entorno de Laboratorio Virtual 3D y librerías WebGL..." />
+              </div>
+            }
+          >
+            <VirtualLabHub
+              onAskTutor={(question) => {
+                setActiveTab('chat');
+                sendMessage(question);
+              }}
+            />
+          </Suspense>
+        )}
+
         {activeTab === 'balancing' && (
           <div className="flex-1 max-w-7xl mx-auto w-full p-4 sm:p-6 space-y-6">
             <BalancingAndCalcHub />
@@ -439,11 +481,11 @@ const DashboardContent: React.FC = () => {
                 Escala y Cálculo de pH / pOH
               </button>
               <button
-                onClick={() => setActiveTab('balancing')}
-                className="px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 flex items-center gap-1.5 transition-all ml-auto"
+                onClick={() => setActiveTab('lab')}
+                className="px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-cyan-50 dark:bg-cyan-950/60 text-cyan-700 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800 hover:bg-cyan-100 flex items-center gap-1.5 transition-all ml-auto"
               >
-                <Scale className="w-4 h-4" />
-                <span>Ir a Balanceo & Estequiometría →</span>
+                <FlaskConical className="w-4 h-4" />
+                <span>Ir al Laboratorio Virtual 3D →</span>
               </button>
             </div>
 
