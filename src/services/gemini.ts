@@ -1,4 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
+import { buildStudyMaterialPromptContext } from './studyMaterial';
 
 /**
  * Tipos de mensajes compatibles con el historial de chat del tutor socrático.
@@ -121,6 +122,8 @@ export const buildSocraticSystemInstruction = (
 - **Modo Quiz (${mode === 'quiz' ? 'ACTIVO' : 'DISPONIBLE'}):** Plantea una pregunta desafiante con opciones de respuesta y pídele al alumno justificar su razonamiento antes de revelarle la solución.
 
 ${topicContext ? `### CONTEXTO TEMÁTICO ACTUAL:\nEl estudiante está estudiando el tema: "${topicContext}". Adapta tus preguntas y ejemplos a esta temática.` : ''}
+
+${buildStudyMaterialPromptContext()}
 
 ### REGLAS ESTRICTAS DE FORMATO PARA ECUACIONES QUÍMICAS:
 Al mostrar ecuaciones o fórmulas químicas, debes obedecer estas reglas sin excepción:
