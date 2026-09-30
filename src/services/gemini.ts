@@ -98,6 +98,26 @@ export const getGeminiClient = (): GoogleGenAI => {
 };
 
 /**
+ * Obtiene el nombre del modelo asignado dinámicamente desde import.meta.env.VITE_GEMINI_MODEL.
+ * Asegura que lleve el prefijo 'models/' exigido por la API de Gemini (ej. 'models/gemini-3.8-flash').
+ *
+ * @param overrideModel Nombre opcional de modelo pasado directamente en la llamada
+ * @returns Identificador canónico del modelo con prefijo 'models/'
+ */
+export const getActiveGeminiModel = (overrideModel?: string): string => {
+  const envModel = import.meta.env.VITE_GEMINI_MODEL;
+  const rawModel = (overrideModel || envModel || 'gemini-3.8-flash').trim();
+
+  // Si ya tiene el prefijo 'models/' o 'tunedModels/', devolver tal cual
+  if (rawModel.startsWith('models/') || rawModel.startsWith('tunedModels/')) {
+    return rawModel;
+  }
+
+  // Concatenar el prefijo 'models/' requerido por la API
+  return `models/${rawModel}`;
+};
+
+/**
  * Construye el System Prompt pedagógico para el Tutor Socrático de Química.
  */
 export const buildSocraticSystemInstruction = (
@@ -418,12 +438,7 @@ export async function sendSocraticTutorPrompt(
 
   try {
     const ai = getGeminiClient();
-    let selectedModel =
-      modelName || import.meta.env.VITE_GEMINI_MODEL || 'models/gemini-3.8-flash';
-
-    if (selectedModel === 'gemini-2.5-flash' || selectedModel === 'models/gemini-2.5-flash') {
-      selectedModel = 'models/gemini-3.8-flash';
-    }
+    const selectedModel = getActiveGeminiModel(modelName);
 
     // Construir la instrucción del sistema socrático
     const systemInstruction = buildSocraticSystemInstruction(mode, topicContext);
@@ -527,10 +542,7 @@ export async function generateChallengeWithGemini(
 
   try {
     const ai = getGeminiClient();
-    let selectedModel = import.meta.env.VITE_GEMINI_MODEL || 'models/gemini-3.8-flash';
-    if (selectedModel === 'gemini-2.5-flash' || selectedModel === 'models/gemini-2.5-flash') {
-      selectedModel = 'models/gemini-3.8-flash';
-    }
+    const selectedModel = getActiveGeminiModel();
 
     const systemInstruction = `Eres un generador especializado de problemas y retos interactivos de química para la "Zona de Retos".
 Debes basarte EXCLUSIVAMENTE en el contenido, reacciones, metodologías y ejemplos del libro y material de estudio oficial cargado en la carpeta "material_estudio" (métodos de balanceo por tanteo, redox y algebraico de UAEH, estequiometría de masas y moles, y leyes de gases ideales PV = nRT).

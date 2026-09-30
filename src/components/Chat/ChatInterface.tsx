@@ -167,7 +167,7 @@ export const ChatInterface: React.FC = () => {
                 {isGeminiActive ? (
                   <span className="text-[10px] font-bold tracking-wider px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300 border border-purple-300/40 flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-purple-500 animate-pulse" />
-                    Gemini 3.8 Flash
+                    {(import.meta.env.VITE_GEMINI_MODEL || 'models/gemini-3.8-flash').replace(/^models\//, '')}
                   </span>
                 ) : (
                   <span
